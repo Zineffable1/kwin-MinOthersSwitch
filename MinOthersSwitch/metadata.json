@@ -1,0 +1,24 @@
+{
+  "KPackageStructure": "KWin/Script",
+  "KPlugin": {
+    "Id": "MinOthersSwitch",
+    "Name": "Minimize Others On Switch",
+    "Description": "Minimize all other windows when the active window changes",
+    "Icon": "window-minimize",
+    "Authors": [
+      {
+        "Name": "Harly Walsh"
+      }
+    ],
+    "Version": "1.0",
+    "License": "MIT",
+    "EnabledByDefault": false
+  },
+  "ServiceTypes": ["KWin/Script"],
+  "X-Plasma-API": "javascript",
+  "X-Plasma-MainScript": "code/main.js",
+  "X-KDE-ConfigModule": "kwin/effects/configs/kcm_kwin4_genericscripted",
+  "X-KDE-Library": "kwin4_script_minimizeothers",
+  "X-KDE-PluginInfo-Name": "MinOthersSwitch",
+  "X-KDE-PluginKeyword": "minimize, window management"
+}
