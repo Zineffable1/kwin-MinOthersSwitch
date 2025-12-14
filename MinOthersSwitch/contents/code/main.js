@@ -1,16 +1,20 @@
-// Minimize Others - KWin Script for Plasma 6 Wayland
-// Fixed: System Settings minimization with smarter protection
+// Single Active Window - KWin Script for Plasma 6 Wayland
 
 let lastNormalWindow = null;
 let configDialogOpen = false;
-let lastMainWindowBeforeDialog = null; // NEW: Track last main window before dialog
+let lastMainWindowBeforeDialog = null; //Track last main window before dialog
+
+const skipDock = readConfig("skipDock", true);
+const skipDialogs = readConfig("skipDialogs", true);
+const restoreOnClose = readConfig("restoreOnClose", true);
 
 workspace.windowActivated.connect(function(activeClient) {
   // Read fresh config values every time
-  const skipDock = readConfig("skipDock", true);
-  const skipDialogs = readConfig("skipDialogs", true);
+
 
   if (!activeClient) return;
+
+
 
   // Skip dock/task manager if configured
   if (skipDock) {
@@ -23,19 +27,7 @@ workspace.windowActivated.connect(function(activeClient) {
       }
   }
 
-  // Check if this is a config dialog
-  if (activeClient.caption.includes("Minimize Others Configuration")) {
-    configDialogOpen = true;
-    // Don't minimize while config dialog is open
-    return;
-  }
 
-  // If config dialog was open and now we're back to System Settings,
-  // reset the flag and allow minimization
-  if (configDialogOpen && activeClient.resourceClass === "systemsettings") {
-    configDialogOpen = false;
-    // Continue with normal processing - don't return!
-  }
 
   const allWindows = workspace.windowList();
 
@@ -62,22 +54,31 @@ workspace.windowActivated.connect(function(activeClient) {
       return;
     }
   }
-
+  //////////////////////////////////
   // Store as last normal window (for restoration when closed)
   if (activeClient.normalWindow &&
     !activeClient.specialWindow &&
     !activeClient.dock &&
     !activeClient.desktopWindow) {
 
-    // NEW: Check if this might be a dialog (small window)
+    // Check if this might be a dialog (small window)
     // If it's small and there's a window from same app that was just active, it's likely a dialog
-    const isLikelyDialog = activeClient.width < 800 || activeClient.height < 600;
+    let isLikelyDialog = false;
 
-  if (isLikelyDialog && lastNormalWindow && lastNormalWindow.resourceClass === activeClient.resourceClass) {
+  if (skipDialogs) {
+    // Original line runs only if skipDialogs is true
+    if (lastNormalWindow && activeClient.minSize && lastNormalWindow.minSize) {
+      isLikelyDialog = activeClient.minSize.toString().split(",")[0] !== lastNormalWindow.minSize.toString().split(",")[0];
+    }
+  } else {
+    // Config is false, treat as not a dialog
+    isLikelyDialog = false;
+  }
+
+  if (skipDialogs && isLikelyDialog && lastNormalWindow && lastNormalWindow.resourceClass === activeClient.resourceClass) {
     // This is likely a dialog from the same app as the last main window
     // Store the main window so we don't minimize it
     lastMainWindowBeforeDialog = lastNormalWindow;
-    console.log("DEBUG: Dialog detected, saving main window:", lastMainWindowBeforeDialog.caption);
   } else {
     // This is a main window or not related to previous window
     lastNormalWindow = activeClient;
@@ -100,19 +101,12 @@ workspace.windowActivated.connect(function(activeClient) {
         }
       }
 
-      // SPECIAL CASE: Don't minimize System Settings ONLY when config dialog is open
-      if (configDialogOpen && (win.resourceClass === "systemsettings" ||
-        win.caption.includes("KWin Scripts"))) {
+      // If this window is the main window we saved before a dialog opened, don't minimize it
+      if (lastMainWindowBeforeDialog && win === lastMainWindowBeforeDialog) {
         continue;
-        }
+      }
 
-        // NEW: If this window is the main window we saved before a dialog opened, don't minimize it
-        if (lastMainWindowBeforeDialog && win === lastMainWindowBeforeDialog) {
-          console.log("DEBUG: Skipping main window because dialog is open:", win.caption);
-          continue;
-        }
-
-        win.minimized = true;
+      win.minimized = true;
     }
 });
 
@@ -120,9 +114,8 @@ workspace.windowActivated.connect(function(activeClient) {
 workspace.windowRemoved.connect(function(removedClient) {
   if (!removedClient) return;
 
-  // Read config to check if restoration is enabled
-  const restoreOnClose = readConfig("restoreOnClose", true);
 
+  // Read config to check if restoration is enabled
   if (!restoreOnClose) {
     if (lastNormalWindow === removedClient) {
       lastNormalWindow = null;
@@ -135,10 +128,7 @@ workspace.windowRemoved.connect(function(removedClient) {
     const allWindows = workspace.windowList();
     let newActive = null;
 
-    // Read fresh config for dialog checking
-    const skipDialogs = readConfig("skipDialogs", true);
-
-    // Strategy 1: Find the most recently used normal window (excluding the removed one)
+    // Find the most recently used normal window (excluding the removed one)
     const stackingOrder = workspace.stackingOrder || allWindows;
 
     for (let i = stackingOrder.length - 1; i >= 0; i--) {
@@ -165,9 +155,12 @@ workspace.windowRemoved.connect(function(removedClient) {
       break;
     }
 
-    // Strategy 2: If we only found minimized windows, unminimize one
+    // If we only found minimized windows, unminimize one
     if (newActive && newActive.minimized) {
       newActive.minimized = false;
+      workspace.activeWindow = newActive;
+    } else if (newActive && !newActive.minimized) {
+      workspace.activeWindow = newActive;
     }
 
     // Update tracking
@@ -178,12 +171,7 @@ workspace.windowRemoved.connect(function(removedClient) {
     }
   }
 
-  // If the removed window was a config dialog, reset the flag
-  if (removedClient.caption.includes("Minimize Others Configuration")) {
-    configDialogOpen = false;
-  }
-
-  // NEW: If the removed window was the dialog, reset the tracking
+  // If the removed window was the dialog, reset the tracking
   if (removedClient === lastMainWindowBeforeDialog) {
     lastMainWindowBeforeDialog = null;
   }
